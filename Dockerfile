@@ -15,7 +15,9 @@ RUN pnpm install
 
 # 拷贝前端源码并构建
 COPY front/. .
-RUN pnpm run generate
+
+# ✅ 改为 SSR 构建，而不是静态导出
+RUN pnpm run build
 
 
 # =======================
@@ -36,6 +38,9 @@ RUN go mod download
 # 拷贝后端源码与前端构建结果
 COPY backend/. .
 COPY --from=front /app/.output/public /app/public
+# ✅ 同时复制 SSR 代码（Nuxt 构建必须）
+COPY --from=front /app/.output/server /app/server
+COPY --from=front /app/.output/nitro.json /app/nitro.json
 
 # 编译 Go 二进制
 RUN go build -tags prod \
@@ -44,7 +49,7 @@ RUN go build -tags prod \
 
 
 # =======================
-# 最终运行阶段（轻量级镜像）
+# 最终运行阶段
 # =======================
 FROM alpine
 WORKDIR /app
@@ -52,22 +57,24 @@ WORKDIR /app
 # 安装依赖
 RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
 
-# ✅ 创建数据库目录，防止 SQLite 报错
+# ✅ 创建数据库目录（防止 SQLite 报错）
 RUN mkdir -p /app/data
 
+# ✅ 可选：日志目录（防止未来写入错误）
+RUN mkdir -p /app/logs
 
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
 
-# 拷贝后端可执行文件 + 静态资源
+# 拷贝后端可执行文件 + 构建产物
 COPY --from=backend /app/moments /app/moments
 COPY --from=backend /app/public /app/public
+COPY --from=backend /app/server /app/server
+COPY --from=backend /app/nitro.json /app/nitro.json
 
-# 设置权限
+# 设置可执行权限
 RUN chmod +x /app/moments
 
-# 暴露端口
 EXPOSE 3000
 
-# 启动应用
 CMD ["/app/moments"]
