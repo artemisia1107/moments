@@ -17,12 +17,13 @@ RUN pnpm install
 COPY front/. .
 RUN pnpm run generate
 
+
 # =======================
 # 后端构建阶段（Golang）
 # =======================
 FROM golang:1.23.3-alpine AS backend
-ARG VERSION
-ARG COMMIT_ID
+ARG VERSION=1.0.0
+ARG COMMIT_ID=dev
 WORKDIR /app
 
 RUN apk add --no-cache build-base tzdata
@@ -41,14 +42,19 @@ RUN go build -tags prod \
   -ldflags="-s -w -X main.version=${VERSION} -X main.commitId=${COMMIT_ID}" \
   -o /app/moments
 
+
 # =======================
-# 最终运行阶段
+# 最终运行阶段（轻量级镜像）
 # =======================
 FROM alpine
 WORKDIR /app
 
 # 安装依赖
 RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
+
+# ✅ 创建数据库目录，防止 SQLite 报错
+RUN mkdir -p /app/data
+
 
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
@@ -57,7 +63,11 @@ ENV TZ=Asia/Shanghai
 COPY --from=backend /app/moments /app/moments
 COPY --from=backend /app/public /app/public
 
+# 设置权限
 RUN chmod +x /app/moments
 
+# 暴露端口
 EXPOSE 3000
+
+# 启动应用
 CMD ["/app/moments"]
